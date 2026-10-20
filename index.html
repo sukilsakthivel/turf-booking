@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Turf booking</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Turf booking">
+<meta name="theme-color" content="#1E6B34">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<!--
+  Turf booking wrapper.
+  This file holds no private link. The booking page link is added on each
+  phone, either through the setup box or by opening this page with the
+  link after a # sign, and the phone remembers it.
+  To clear a phone's saved link, open this page with #reset at the end.
+-->
+<style>
+:root {
+  --bg: #F3F5F1;
+  --ink: #17201A;
+  --muted: #56635A;
+  --line: #C6CFC8;
+  --field: #FFFFFF;
+  --accent: #1E6B34;
+  --danger: #B42318;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0F1410;
+    --ink: #E7EDE8;
+    --muted: #A3B0A7;
+    --line: #3A463E;
+    --field: #121813;
+    --accent: #2E8A4A;
+    --danger: #FF9B91;
+    color-scheme: dark;
+  }
+}
+[hidden] { display: none !important; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  border: 0;
+  display: block;
+  background: var(--bg);
+}
+#setup {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 20px 28px;
+}
+h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.15; }
+p { margin: 0 0 18px; color: var(--muted); }
+label { display: block; margin: 0 0 6px; font-weight: 600; }
+input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--field);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+}
+input:focus { outline: none; border-color: var(--accent); }
+.err { margin: 8px 0 0; color: var(--danger); font-weight: 600; }
+.err:empty { display: none; }
+button {
+  margin-top: 18px;
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div id="setup" hidden>
+  <h1>Turf booking</h1>
+  <p>Paste the booking page link once. This phone will remember it.</p>
+  <label for="link">Booking page link</label>
+  <input id="link" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+         placeholder="https://script.google.com/macros/s/…/exec">
+  <p class="err" id="err" role="alert"></p>
+  <button type="button" id="openBtn">Open booking page</button>
+</div>
+
+<iframe id="app" title="Turf booking" hidden></iframe>
+
+<script>
+(function () {
+  var KEY = 'turfBookingLink';
+
+  // Accepts the full booking page link or just its ID, and only ever builds a Google Apps Script link
+  function toBookingUrl(text) {
+    text = String(text || '').trim();
+    try { text = decodeURIComponent(text); } catch (e) {}
+    var m = text.match(/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]{20,})\/exec/);
+    var id = m ? m[1] : (/^[A-Za-z0-9_-]{20,}$/.test(text) ? text : null);
+    return id ? 'https://script.google.com/macros/s/' + id + '/exec' : null;
+  }
+  function read() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+  function save(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+
+  function openApp(url) {
+    var frame = document.getElementById('app');
+    frame.src = url;
+    frame.hidden = false;
+    document.getElementById('setup').hidden = true;
+  }
+
+  function showSetup() {
+    document.getElementById('setup').hidden = false;
+    var input = document.getElementById('link');
+    var err = document.getElementById('err');
+    function go() {
+      var url = toBookingUrl(input.value);
+      if (!url) {
+        err.textContent = 'That doesn’t look like the booking page link. It starts with https://script.google.com/macros/s/ and ends with /exec.';
+        input.focus();
+        return;
+      }
+      save(url);
+      openApp(url);
+    }
+    document.getElementById('openBtn').addEventListener('click', go);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  }
+
+  var hash = location.hash.slice(1);
+  if (hash === 'reset') {
+    clear();
+    history.replaceState(null, '', location.pathname);
+    hash = '';
+  }
+
+  var url = toBookingUrl(hash) || toBookingUrl(read());
+  if (url) {
+    save(url);
+    openApp(url);
+  } else {
+    showSetup();
+  }
+})();
+</script>
+</body>
+</html>
