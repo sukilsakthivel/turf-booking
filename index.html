@@ -14,6 +14,8 @@
   This file holds no private link. The booking page link is added on each
   phone, either through the setup box or by opening this page with the
   link after a # sign, and the phone remembers it.
+  Only the turf booking page can be opened here: the file keeps a one-way
+  fingerprint of its ID, which can't be turned back into the link.
   To clear a phone's saved link, open this page with #reset at the end.
 -->
 <style>
@@ -113,43 +115,60 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 <script>
 (function () {
   var KEY = 'turfBookingLink';
+  // SHA-256 fingerprints of the booking page IDs this wrapper may open
+  var ALLOWED = ['2dbb855e3c949846f37620bf09466a9946fe8fca82892e82808fe89764e5becb'];
 
-  // Accepts the full booking page link or just its ID, and only ever builds a Google Apps Script link
-  function toBookingUrl(text) {
+  // Accepts the full booking page link or just its ID
+  function toId(text) {
     text = String(text || '').trim();
     try { text = decodeURIComponent(text); } catch (e) {}
     var m = text.match(/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]{20,})\/exec/);
-    var id = m ? m[1] : (/^[A-Za-z0-9_-]{20,}$/.test(text) ? text : null);
-    return id ? 'https://script.google.com/macros/s/' + id + '/exec' : null;
+    return m ? m[1] : (/^[A-Za-z0-9_-]{20,}$/.test(text) ? text : null);
+  }
+  function fingerprint(id) {
+    if (!window.crypto || !crypto.subtle || !window.TextEncoder) return Promise.resolve(null);
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(id)).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+    });
+  }
+  function isAllowed(id) {
+    if (!id) return Promise.resolve(false);
+    return fingerprint(id).then(function (h) { return !!h && ALLOWED.indexOf(h) !== -1; });
   }
   function read() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
   function save(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
   function clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
 
-  function openApp(url) {
+  function openApp(id) {
     var frame = document.getElementById('app');
-    frame.src = url;
+    frame.src = 'https://script.google.com/macros/s/' + id + '/exec';
     frame.hidden = false;
     document.getElementById('setup').hidden = true;
   }
 
-  function showSetup() {
+  var input = document.getElementById('link');
+  var err = document.getElementById('err');
+  function showSetup(message) {
     document.getElementById('setup').hidden = false;
-    var input = document.getElementById('link');
-    var err = document.getElementById('err');
-    function go() {
-      var url = toBookingUrl(input.value);
-      if (!url) {
-        err.textContent = 'That doesn’t look like the booking page link. It starts with https://script.google.com/macros/s/ and ends with /exec.';
-        input.focus();
-        return;
-      }
-      save(url);
-      openApp(url);
-    }
-    document.getElementById('openBtn').addEventListener('click', go);
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+    err.textContent = message || '';
   }
+  function tryOpen(id, fromBox) {
+    return isAllowed(id).then(function (ok) {
+      if (ok) { save(id); openApp(id); return; }
+      if (fromBox || id) {
+        showSetup(id
+          ? 'That link isn’t this turf’s booking page. Check you copied the right link.'
+          : 'That doesn’t look like the booking page link. It starts with https://script.google.com/macros/s/ and ends with /exec.');
+        if (fromBox) input.focus();
+      } else {
+        showSetup('');
+      }
+    });
+  }
+  document.getElementById('openBtn').addEventListener('click', function () { tryOpen(toId(input.value), true); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryOpen(toId(input.value), true); });
 
   var hash = location.hash.slice(1);
   if (hash === 'reset') {
@@ -157,13 +176,16 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
     history.replaceState(null, '', location.pathname);
     hash = '';
   }
-
-  var url = toBookingUrl(hash) || toBookingUrl(read());
-  if (url) {
-    save(url);
-    openApp(url);
+  var fromHash = toId(hash);
+  var stored = toId(read());
+  if (fromHash) {
+    tryOpen(fromHash, false);
+  } else if (stored) {
+    isAllowed(stored).then(function (ok) {
+      if (ok) openApp(stored); else { clear(); showSetup(''); }
+    });
   } else {
-    showSetup();
+    showSetup('');
   }
 })();
 </script>
